@@ -153,19 +153,19 @@ AddMenus endp
 
 PaintImage proc hWin :HWND
 
-    local rect  :RECT
-    local hdc   :HDC
-    local brush :HBRUSH
+		local rect  :RECT
+		local hdc   :HDC
+		local brush :HBRUSH
 
-    mov hdc, rv(GetDC, hWin)
-    mov brush, rv(CreatePatternBrush, hFileImage)
+		mov hdc, rv(GetDC, hWin)
+		mov brush, rv(CreatePatternBrush, hFileImage)
 
-    invoke GetWindowRect, hWin, addr rect
-    invoke FillRect, hdc, addr rect, brush
-    invoke DeleteObject, brush
-    invoke ReleaseDC, hWin, hdc
+		invoke GetWindowRect, hWin, addr rect
+		invoke FillRect, hdc, addr rect, brush
+		invoke DeleteObject, brush
+		invoke ReleaseDC, hWin, hdc
 
-    ret
+		ret
 PaintImage endp
 
 
@@ -185,7 +185,7 @@ OpenFileDialogue proc hWin :HWND
     invoke GetOpenFileName, addr ofn
     .if eax != 0
       mov hFileImage, rv(LoadImage, NULL, ofn.lpstrFile, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE)
-      invoke PaintImage, hWin
+      invoke RedrawWindow, hWin, NULL, NULL, RDW_INVALIDATE or RDW_INTERNALPAINT
     .endif
 
     ret
