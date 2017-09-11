@@ -153,17 +153,23 @@ AddMenus endp
 
 PaintImage proc hWin :HWND
 
-		local rect  :RECT
-		local hdc   :HDC
-		local brush :HBRUSH
+		local ps			:PAINTSTRUCT
+		local bm			:BITMAP
+		local hdc			:HDC
+		local memHdc	:HDC
+		local	image		:HBITMAP
 
-		mov hdc, rv(GetDC, hWin)
-		mov brush, rv(CreatePatternBrush, hFileImage)
+		mov hdc, rv(BeginPaint, hWin, addr ps)
+		mov memHdc, rv(CreateCompatibleDC, hdc)
 
-		invoke GetWindowRect, hWin, addr rect
-		invoke FillRect, hdc, addr rect, brush
-		invoke DeleteObject, brush
-		invoke ReleaseDC, hWin, hdc
+		mov image, rv(SelectObject, memHdc, hFileImage)
+		invoke GetObject, hFileImage, sizeof bm, addr bm
+		invoke BitBlt,hdc, 0, 0, bm.bmWidth, bm.bmHeight, memHdc, 0, 0, SRCCOPY
+
+		invoke SelectObject, memHdc, image
+		invoke DeleteDC, memHdc
+
+		invoke EndPaint, hWin, addr ps
 
 		ret
 PaintImage endp
