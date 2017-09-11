@@ -7,11 +7,14 @@
 ; #########################################################################
 
 	include  /masm32/include/windows.inc
+  include /masm32/macros/macros.asm
 	include /masm32/include/user32.inc
 	include /masm32/include/kernel32.inc
+  include		/masm32/include/comdlg32.inc
 
 	includelib /masm32/lib/user32.lib
 	includelib /masm32/lib/kernel32.lib
+  includelib	/masm32/lib/comdlg32.lib
 
 ; #########################################################################
 
@@ -27,22 +30,37 @@
 
 ; #########################################################################
 
-	.data
+.const
+    IDM_FILE_OPEN equ 1
+    maxsize       equ 256
+    memsize       equ 65535
+    FilterString	db	"All Files",0,"*.*",0
+		              db	"BMP Files",0,"*.bmp", 0,0 ;набор фильтров
 
-		hInstance 		dd ?
-		lpszCmdLine		dd ?
 
 ; #########################################################################
 
-	.code
+.data
+    szClassName   db "BasicWindow", 0
+    szWindowTitle db "FirstWindow", 0
+    menuOpen      db "&Open", 0
+    menuFile      db "&File", 0
+		hInstance 		dd ?
+		lpszCmdLine		dd ?
+    hWnd          HWND ?
+    hFile         HANDLE ?
+    ofn		        OPENFILENAME <>	; структура для открытия файла
+    buffer        db  maxsize dup(0)  ;буфер имени файла
+
+; #########################################################################
+
+.code
 
 start:
 
-	invoke 	GetModuleHandle, NULL
-	mov	hInstance, eax
+	mov	hInstance, rv(GetModuleHandle, NULL)
 
-	invoke	GetCommandLine
-	mov	lpszCmdLine, eax
+	mov	lpszCmdLine, rv(GetCommandLine)
 
 	invoke 	WinMain, hInstance, NULL, lpszCmdLine, SW_SHOWDEFAULT
 	invoke	ExitProcess, eax
@@ -53,29 +71,26 @@ start:
 ;
 ; Main program execution entry point
 ; ------------------------------------------------------------------------
-WinMain proc 	hInst 		:dword,
+WinMain proc hInst 		  :dword,
 		hPrevInst 	:dword,
 		szCmdLine 	:dword,
-		nShowCmd 	:dword
+		nShowCmd 	  :dword
 
 	local 	wc 	:WNDCLASSEX
 	local 	msg 	:MSG
-	local 	hWnd 	:HWND
 
-	szText	szClassName, "BasicWindow"
-	szText	szWindowTitle, "First Window"
-
+  ;Заполнение структуры wc
 	mov	wc.cbSize, sizeof WNDCLASSEX
 	mov	wc.style, CS_HREDRAW or CS_VREDRAW or CS_BYTEALIGNWINDOW
-	mov 	wc.lpfnWndProc, WndProc
-	mov 	wc.cbClsExtra, NULL
+	mov wc.lpfnWndProc, WndProc
+	mov wc.cbClsExtra, NULL
 	mov	wc.cbWndExtra, NULL
 
-	push	hInst
-	pop 	wc.hInstance
+  push hInst
+  pop wc.hInstance
 
-	mov	wc.hbrBackground, COLOR_BTNFACE + 1
-	mov	wc.lpszMenuName, NULL
+	mov	wc.hbrBackground, COLOR_WINDOW + 1
+	;mov	wc.lpszMenuName, offset menuName
 	mov 	wc.lpszClassName, offset szClassName
 
 	invoke	LoadIcon, hInst, IDI_APPLICATION
@@ -85,17 +100,18 @@ WinMain proc 	hInst 		:dword,
 	invoke	LoadCursor, hInst, IDC_ARROW
 	mov	wc.hCursor, eax
 
-	invoke	RegisterClassEx, addr wc
+	invoke	RegisterClassEx, addr wc  ;Регистрируем класс окна
 
+  ;Создание основного окна
 	invoke	CreateWindowEx, WS_EX_APPWINDOW, addr szClassName, addr szWindowTitle,
 				WS_OVERLAPPEDWINDOW,
 				CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
 				NULL, NULL, hInst, NULL
 
-	mov	hWnd, eax
+	mov	hWnd, eax  ; сохранение handle окна
 
-	invoke	ShowWindow, hWnd, nShowCmd
-	invoke	UpdateWindow, hWnd
+	invoke	ShowWindow, hWnd, nShowCmd  ;отображение окна
+	invoke	UpdateWindow, hWnd          ;перерисовка окна
 
 MessagePump:
 
@@ -116,25 +132,68 @@ MessagePumpEnd:
 
 WinMain endp
 
+; ------------------------------------------------------------------------
+;  AddMenus
+; ------------------------------------------------------------------------
+
+AddMenus proc hWin :HWND
+    local hMenubar  :HMENU
+    local hMenu     :HMENU
+
+
+    mov hMenubar, rv(CreateMenu)
+
+    mov hMenu, rv(CreateMenu)
+
+    invoke AppendMenuA, hMenu, MF_STRING, IDM_FILE_OPEN, chr$("&Open")
+
+    invoke AppendMenuA, hMenubar, MF_POPUP, hMenu, chr$("&File")
+
+    invoke SetMenu, hWin, hMenubar
+
+    ret
+
+AddMenus endp
+
 
 ; ------------------------------------------------------------------------
 ; WndProc
 ;
 ; Handles all of the messages sent to the window
 ; ------------------------------------------------------------------------
-WndProc proc 	hWin 	:dword,
+WndProc proc 	hWin 	:HWND,
 		uMsg 	:dword,
 		wParam 	:dword,
 		lParam 	:dword
 
-	.if uMsg == WM_DESTROY
+    mov ofn.lStructSize, sizeof ofn
+    mov eax, hWnd
+    mov ofn.hWndOwner, eax
+    mov eax, hInstance
+    mov ofn.hInstance, eax
+    mov ofn.lpstrFilter, offset FilterString
+    mov ofn.lpstrFile, offset buffer
+    mov ofn.nMaxFile, maxsize
+
+
+  .if uMsg == WM_CREATE
+
+    invoke AddMenus, hWin
+
+	.elseif uMsg == WM_DESTROY
 
 		invoke 	PostQuitMessage, 0
-
 		xor	eax, eax
 		ret
 
+  .elseif uMsg == WM_COMMAND
+    mov eax, wParam
+    .if ax == IDM_FILE_OPEN
+      mov ofn.Flags, OFN_FILEMUSTEXIST or OFN_PATHMUSTEXIST or OFN_LONGNAMES or OFN_EXPLORER
+      invoke GetOpenFileName, addr ofn
+    .endif
 	.endif
+
 
 	invoke	DefWindowProc, hWin, uMsg, wParam, lParam
 
