@@ -10,9 +10,11 @@
   include /masm32/macros/macros.asm
 	include /masm32/include/user32.inc
 	include /masm32/include/kernel32.inc
+  include /masm32/include/gdi32.inc
   include		/masm32/include/comdlg32.inc
 
 	includelib /masm32/lib/user32.lib
+  includelib /masm32/lib/gdi32.lib
 	includelib /masm32/lib/kernel32.lib
   includelib	/masm32/lib/comdlg32.lib
 
@@ -48,7 +50,7 @@
 		hInstance 		dd ?
 		lpszCmdLine		dd ?
     hWnd          HWND ?
-    hFile         HANDLE ?
+    hFileImage    HBITMAP 0
     ofn		        OPENFILENAME <>	; структура для открытия файла
     buffer        db  maxsize dup(0)  ;буфер имени файла
 
@@ -90,7 +92,6 @@ WinMain proc hInst 		  :dword,
   pop wc.hInstance
 
 	mov	wc.hbrBackground, COLOR_WINDOW + 1
-	;mov	wc.lpszMenuName, offset menuName
 	mov 	wc.lpszClassName, offset szClassName
 
 	invoke	LoadIcon, hInst, IDI_APPLICATION
@@ -140,21 +141,55 @@ AddMenus proc hWin :HWND
     local hMenubar  :HMENU
     local hMenu     :HMENU
 
-
     mov hMenubar, rv(CreateMenu)
-
     mov hMenu, rv(CreateMenu)
 
     invoke AppendMenuA, hMenu, MF_STRING, IDM_FILE_OPEN, chr$("&Open")
-
     invoke AppendMenuA, hMenubar, MF_POPUP, hMenu, chr$("&File")
-
     invoke SetMenu, hWin, hMenubar
 
     ret
-
 AddMenus endp
 
+PaintImage proc hWin :HWND
+
+    local rect  :RECT
+    local hdc   :HDC
+    local brush :HBRUSH
+
+    mov hdc, rv(GetDC, hWin)
+    mov brush, rv(CreatePatternBrush, hFileImage)
+
+    invoke GetWindowRect, hWin, addr rect
+    invoke FillRect, hdc, addr rect, brush
+    invoke DeleteObject, brush
+    invoke ReleaseDC, hWin, hdc
+
+    ret
+PaintImage endp
+
+
+OpenFileDialogue proc hWin :HWND
+
+    mov ofn.lStructSize, sizeof ofn
+    mov eax, hWin
+    mov ofn.hWndOwner, eax
+    mov eax, hInstance
+    mov ofn.hInstance, eax
+    mov ofn.lpstrFilter, offset FilterString
+    mov ofn.nFilterIndex, 2
+    mov ofn.lpstrFile, offset buffer
+    mov ofn.nMaxFile, maxsize
+    mov ofn.Flags, OFN_FILEMUSTEXIST or OFN_PATHMUSTEXIST or OFN_LONGNAMES or OFN_EXPLORER
+
+    invoke GetOpenFileName, addr ofn
+    .if eax != 0
+      mov hFileImage, rv(LoadImage, NULL, ofn.lpstrFile, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE)
+      invoke PaintImage, hWin
+    .endif
+
+    ret
+OpenFileDialogue endp
 
 ; ------------------------------------------------------------------------
 ; WndProc
@@ -166,31 +201,24 @@ WndProc proc 	hWin 	:HWND,
 		wParam 	:dword,
 		lParam 	:dword
 
-    mov ofn.lStructSize, sizeof ofn
-    mov eax, hWnd
-    mov ofn.hWndOwner, eax
-    mov eax, hInstance
-    mov ofn.hInstance, eax
-    mov ofn.lpstrFilter, offset FilterString
-    mov ofn.lpstrFile, offset buffer
-    mov ofn.nMaxFile, maxsize
-
-
   .if uMsg == WM_CREATE
-
     invoke AddMenus, hWin
 
-	.elseif uMsg == WM_DESTROY
+  .elseif uMsg == WM_PAINT
+    mov eax, hFileImage
+    .if eax != 0
+      invoke PaintImage, hWin
+    .endif
 
+	.elseif uMsg == WM_DESTROY
 		invoke 	PostQuitMessage, 0
 		xor	eax, eax
 		ret
 
   .elseif uMsg == WM_COMMAND
     mov eax, wParam
-    .if ax == IDM_FILE_OPEN
-      mov ofn.Flags, OFN_FILEMUSTEXIST or OFN_PATHMUSTEXIST or OFN_LONGNAMES or OFN_EXPLORER
-      invoke GetOpenFileName, addr ofn
+    .if eax == IDM_FILE_OPEN
+        invoke OpenFileDialogue, hWin
     .endif
 	.endif
 
