@@ -53,6 +53,7 @@
 		hInstance 		dd ?
 		lpszCmdLine		dd ?
 		blueColor			dd 00ff0000h
+		pbmi					BITMAPINFO <>
     hWnd          HWND ?
     hFileImage    HBITMAP 0
     ofn		        OPENFILENAME <>	; структура для открытия файла
@@ -217,25 +218,22 @@ OpenFileStructCreate proc hWin	:HWND
 OpenFileStructCreate endp
 
 ; ------------------------------------------------------------------------
-;  	TransformImage
-;		change hFileImage to new HBITMAP
+;		TransformImage
+;		change hFileImage and delete green and red chanels
 ; ------------------------------------------------------------------------
 
 TransformImage proc hWin :HWND
-		local hdc			:HDC
 		local	bm			:BITMAP
 		local rect		:RECT
 		local memHdc1	:HDC
 		local memHdc2	:HDC
 		local image		:HBITMAP
 
-		;mov hdc, rv(GetDC, hWin)
 		mov memHdc1, rv(CreateCompatibleDC, NULL)
 		mov memHdc2, rv(CreateCompatibleDC, NULL)
 
 		invoke CreateSolidBrush, blueColor
 		invoke SelectObject, memHdc1, eax
-
 
 		invoke SelectObject, memHdc1, hFileImage
 		invoke SelectObject, memHdc2, hFileImage
@@ -245,7 +243,6 @@ TransformImage proc hWin :HWND
 
 		invoke DeleteDC, memHdc1
 		invoke DeleteDC, memHdc2
-		;invoke ReleaseDC, NULL, hdc
 
 		invoke RedrawWindow, hWin, NULL, NULL, RDW_INVALIDATE or RDW_INTERNALPAINT
 
@@ -269,15 +266,126 @@ OpenFileDialogue proc hWin :HWND
 OpenFileDialogue endp
 
 ; ------------------------------------------------------------------------
+;  	CreateBitmapInfoStruct
+; ------------------------------------------------------------------------
+CreateBitmapInfoStruct proc	hWin	:HWND,
+				hBmp	:HBITMAP
+
+		local bmp 				:BITMAP
+		local cBitCount		:word
+
+		invoke GetObject, hBmp, sizeof bmp, addr bmp
+
+		mov ax, bmp.bmPlanes
+		mul bmp.bmBitsPixel
+ 		mov cBitCount, ax
+
+		.if ax <= 16
+			;Shouldn't happen
+			ret
+		.elseif ax <= 24
+			mov cBitCount, 24
+		.else
+			mov cBitCount, 32
+		.endif
+
+		mov pbmi.bmiHeader.biSize, sizeof BITMAPINFOHEADER
+
+		mov eax, bmp.bmHeight
+    mov pbmi.bmiHeader.biHeight, eax
+
+		mov ax, bmp.bmPlanes
+    mov pbmi.bmiHeader.biPlanes, ax
+
+		mov ax, bmp.bmBitsPixel
+		mov pbmi.bmiHeader.biBitCount, ax
+
+		mov pbmi.bmiHeader.biCompression, BI_RGB
+
+		mov eax, bmp.bmWidth
+		mov pbmi.bmiHeader.biWidth, eax
+
+		mul cBitCount
+		add eax, 31
+
+		mov ecx, 31
+		not ecx
+
+		and eax, ecx
+		mov ecx, 8
+		div ecx
+		mov ecx, pbmi.bmiHeader.biHeight
+		mul ecx
+
+		mov pbmi.bmiHeader.biClrImportant, 0
+
+		ret
+CreateBitmapInfoStruct endp
+
+; ------------------------------------------------------------------------
+;  	CreateBitmapInfoStruct
+; ------------------------------------------------------------------------
+CreateBMPFile proc hWin		:HWND,
+				pszFile		:LPTSTR,
+				hBmp			:HBITMAP,
+				hdc				:HDC
+
+		local hdr 		:BITMAPFILEHEADER
+		local hf			:HANDLE
+		local cb			:DWORD
+		local lpBits	:LPBYTE
+		local dwTmp		:DWORD
+
+
+		mov lpBits, rv(GlobalAlloc, GMEM_FIXED, pbmi.bmiHeader.biSizeImage)
+
+		invoke GetDIBits, hdc, hBmp, 0, pbmi.bmiHeader.biHeight, lpBits, addr pbmi, DIB_RGB_COLORS
+
+		mov hf, rv(CreateFile, pszFile, GENERIC_READ or GENERIC_WRITE,0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL)
+
+		mov hdr.bfType, 4d42h
+		mov eax, sizeof RGBQUAD
+		mul pbmi.bmiHeader.biClrUsed
+		add eax, pbmi.bmiHeader.biSize
+		add eax, sizeof BITMAPFILEHEADER
+		mov ecx, eax
+		add eax, pbmi.bmiHeader.biSizeImage
+		mov hdr.bfSize, eax
+
+		mov hdr.bfReserved1, 0
+		mov hdr.bfReserved2, 0
+
+		mov hdr.bfOffBits, ecx
+
+		invoke WriteFile, hf, addr hdr, sizeof BITMAPFILEHEADER, addr dwTmp, NULL
+		mov ecx, sizeof RGBQUAD
+		mul pbmi.bmiHeader.biClrUsed
+		add ecx, sizeof BITMAPINFOHEADER
+
+		invoke WriteFile, hf, addr pbmi.bmiHeader, ecx, addr dwTmp, NULL
+		mov eax, pbmi.bmiHeader.biSizeImage
+		mov cb, eax
+
+		invoke WriteFile, hf, lpBits, cb, addr dwTmp, NULL
+		invoke CloseHandle, hf
+		invoke GlobalFree, lpBits
+
+		ret
+CreateBMPFile endp
+
+; ------------------------------------------------------------------------
 ;  	SaveFileDialogue
 ; ------------------------------------------------------------------------
 SaveFileDialogue proc hWin	:HWND
+		local hdc		:HDC
 
+		mov hdc, rv(CreateCompatibleDC, NULL)
 
 		mov ofn.Flags, OFN_HIDEREADONLY or OFN_PATHMUSTEXIST or OFN_LONGNAMES or OFN_EXPLORER
 		invoke GetSaveFileName, addr ofn
 		.if eax != 0
-
+			invoke CreateBitmapInfoStruct, hWin, hFileImage
+			invoke CreateBMPFile, hWin, ofn.lpstrFile, hFileImage, hdc
 		.endif
 
 		ret
