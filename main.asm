@@ -200,13 +200,21 @@ PaintImage proc hWin :HWND
 PaintImage endp
 
 ; ------------------------------------------------------------------------
-;  	SaveImageFile
+;  	OpenFileStructCreate
 ; ------------------------------------------------------------------------
-SaveImageFile proc hWin	:HWND
-
+OpenFileStructCreate proc hWin	:HWND
+		mov ofn.lStructSize, sizeof ofn
+		mov eax, hWin
+		mov ofn.hWndOwner, eax
+		mov eax, hInstance
+		mov ofn.hInstance, eax
+		mov ofn.lpstrFilter, offset FilterString
+		mov ofn.nFilterIndex, 2
+		mov ofn.lpstrFile, offset buffer
+		mov ofn.nMaxFile, maxsize
 
 		ret
-SaveImageFile endp
+OpenFileStructCreate endp
 
 ; ------------------------------------------------------------------------
 ;  	TransformImage
@@ -217,40 +225,27 @@ TransformImage proc hWin :HWND
 		local hdc			:HDC
 		local	bm			:BITMAP
 		local rect		:RECT
-		local memHdc	:HDC
+		local memHdc1	:HDC
+		local memHdc2	:HDC
 		local image		:HBITMAP
 
-		mov hdc, rv(GetDC, hWin)
-		mov memHdc, rv(CreateCompatibleDC, hdc)
-
-		invoke GetClientRect, hWin, addr rect
+		;mov hdc, rv(GetDC, hWin)
+		mov memHdc1, rv(CreateCompatibleDC, NULL)
+		mov memHdc2, rv(CreateCompatibleDC, NULL)
 
 		invoke CreateSolidBrush, blueColor
-		invoke SelectObject, hdc, eax
+		invoke SelectObject, memHdc1, eax
 
-		invoke SetStretchBltMode, hdc, HALFTONE
 
-		invoke SelectObject, memHdc, hFileImage
+		invoke SelectObject, memHdc1, hFileImage
+		invoke SelectObject, memHdc2, hFileImage
 		invoke GetObject, hFileImage, sizeof bm, addr bm
 
-		mov eax, rect.right
-		sub eax, rect.left
+		invoke BitBlt, memHdc1, 0, 0,  bm.bmWidth, bm.bmHeight, memHdc1, 0, 0, MERGECOPY
 
-		mov ecx, rect.bottom
-		sub ecx, rect.top
-
-		invoke StretchBlt, hdc, 0, 0, eax, ecx, memHdc, 0, 0, bm.bmWidth, bm.bmHeight, MERGECOPY
-
-		mov eax, rect.right
-		sub eax, rect.left
-
-		mov ecx, rect.bottom
-		sub ecx, rect.top
-
-		invoke StretchBlt, memHdc, 0, 0, bm.bmWidth, bm.bmHeight, hdc, 0, 0, eax, ecx, SRCCOPY
-
-		invoke DeleteDC, memHdc
-		invoke ReleaseDC, NULL, hdc
+		invoke DeleteDC, memHdc1
+		invoke DeleteDC, memHdc2
+		;invoke ReleaseDC, NULL, hdc
 
 		invoke RedrawWindow, hWin, NULL, NULL, RDW_INVALIDATE or RDW_INTERNALPAINT
 
@@ -262,15 +257,6 @@ TransformImage endp
 
 OpenFileDialogue proc hWin :HWND
 
-    mov ofn.lStructSize, sizeof ofn
-    mov eax, hWin
-    mov ofn.hWndOwner, eax
-    mov eax, hInstance
-    mov ofn.hInstance, eax
-    mov ofn.lpstrFilter, offset FilterString
-    mov ofn.nFilterIndex, 2
-    mov ofn.lpstrFile, offset buffer
-    mov ofn.nMaxFile, maxsize
     mov ofn.Flags, OFN_FILEMUSTEXIST or OFN_PATHMUSTEXIST or OFN_LONGNAMES or OFN_EXPLORER
 
     invoke GetOpenFileName, addr ofn
@@ -281,6 +267,22 @@ OpenFileDialogue proc hWin :HWND
 
     ret
 OpenFileDialogue endp
+
+; ------------------------------------------------------------------------
+;  	SaveFileDialogue
+; ------------------------------------------------------------------------
+SaveFileDialogue proc hWin	:HWND
+
+
+		mov ofn.Flags, OFN_HIDEREADONLY or OFN_PATHMUSTEXIST or OFN_LONGNAMES or OFN_EXPLORER
+		invoke GetSaveFileName, addr ofn
+		.if eax != 0
+
+		.endif
+
+		ret
+SaveFileDialogue endp
+
 
 ; ------------------------------------------------------------------------
 ; WndProc
@@ -294,6 +296,7 @@ WndProc proc 	hWin 	:HWND,
 
   .if uMsg == WM_CREATE
     invoke AddMenus, hWin
+		invoke OpenFileStructCreate, hWin
 
   .elseif uMsg == WM_PAINT
     mov eax, hFileImage
@@ -313,7 +316,10 @@ WndProc proc 	hWin 	:HWND,
 		.elseif eax == IDM_IMAGE_TRANSFORM
 				invoke TransformImage, hWin
 		.elseif eax == IDM_FILE_SAVE
-				invoke SaveImageFile, hWin
+			mov eax, hFileImage
+			.if eax != 0
+				invoke SaveFileDialogue, hWin
+			.endif
     .endif
 	.endif
 
