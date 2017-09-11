@@ -6,17 +6,17 @@
 
 ; #########################################################################
 
-	include  /masm32/include/windows.inc
+	include /masm32/include/windows.inc
   include /masm32/macros/macros.asm
 	include /masm32/include/user32.inc
 	include /masm32/include/kernel32.inc
   include /masm32/include/gdi32.inc
-  include		/masm32/include/comdlg32.inc
+  include	/masm32/include/comdlg32.inc
 
 	includelib /masm32/lib/user32.lib
   includelib /masm32/lib/gdi32.lib
 	includelib /masm32/lib/kernel32.lib
-  includelib	/masm32/lib/comdlg32.lib
+  includelib /masm32/lib/comdlg32.lib
 
 ; #########################################################################
 
@@ -33,11 +33,13 @@
 ; #########################################################################
 
 .const
-    IDM_FILE_OPEN equ 1
-    maxsize       equ 256
-    memsize       equ 65535
-    FilterString	db	"All Files",0,"*.*",0
-		              db	"BMP Files",0,"*.bmp", 0,0 ;набор фильтров
+    IDM_FILE_OPEN 			equ 1
+		IDM_FILE_SAVE				equ 2
+		IDM_IMAGE_TRANSFORM	equ 3
+    maxsize       			equ 256
+    memsize       			equ 65535
+    FilterString				db	"All Files",0,"*.*",0
+		              			db	"BMP Files",0,"*.bmp", 0,0 ;набор фильтров
 
 
 
@@ -147,6 +149,9 @@ AddMenus proc hWin :HWND
     mov hMenu, rv(CreateMenu)
 
     invoke AppendMenuA, hMenu, MF_STRING, IDM_FILE_OPEN, chr$("&Open")
+		invoke AppendMenuA, hMenu, MF_STRING, IDM_FILE_SAVE, chr$("&Save")
+		invoke AppendMenuA, hMenu, MF_SEPARATOR, 0, NULL
+		invoke AppendMenuA, hMenu, MF_STRING, IDM_IMAGE_TRANSFORM, chr$("&Transform")
     invoke AppendMenuA, hMenubar, MF_POPUP, hMenu, chr$("&File")
     invoke SetMenu, hWin, hMenubar
 
@@ -173,15 +178,10 @@ PaintImage proc hWin :HWND
 
 		invoke GetClientRect, hWin, addr rect
 
-		invoke CreateSolidBrush, blueColor
-		invoke SelectObject, hdc, eax
-
 		mov image, rv(SelectObject, memHdc, hFileImage)
 		invoke GetObject, hFileImage, sizeof bm, addr bm
 
 		invoke SetStretchBltMode, hdc, HALFTONE
-
-		invoke GetDCBrushColor, hdc
 
 		mov eax, rect.right
 		sub eax, rect.left
@@ -189,7 +189,7 @@ PaintImage proc hWin :HWND
 		mov ecx, rect.bottom
 		sub ecx, rect.top
 
-		invoke StretchBlt, hdc, 0, 0,	eax, ecx, memHdc, 0, 0, bm.bmWidth, bm.bmHeight, MERGECOPY
+		invoke StretchBlt, hdc, 0, 0,	eax, ecx, memHdc, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY
 
 		invoke SelectObject, memHdc, image
 		invoke DeleteDC, memHdc
@@ -199,6 +199,63 @@ PaintImage proc hWin :HWND
 		ret
 PaintImage endp
 
+; ------------------------------------------------------------------------
+;  	SaveImageFile
+; ------------------------------------------------------------------------
+SaveImageFile proc hWin	:HWND
+
+
+		ret
+SaveImageFile endp
+
+; ------------------------------------------------------------------------
+;  	TransformImage
+;		change hFileImage to new HBITMAP
+; ------------------------------------------------------------------------
+
+TransformImage proc hWin :HWND
+		local hdc			:HDC
+		local	bm			:BITMAP
+		local rect		:RECT
+		local memHdc	:HDC
+		local image		:HBITMAP
+
+		mov hdc, rv(GetDC, hWin)
+		mov memHdc, rv(CreateCompatibleDC, hdc)
+
+		invoke GetClientRect, hWin, addr rect
+
+		invoke CreateSolidBrush, blueColor
+		invoke SelectObject, hdc, eax
+
+		invoke SetStretchBltMode, hdc, HALFTONE
+
+		invoke SelectObject, memHdc, hFileImage
+		invoke GetObject, hFileImage, sizeof bm, addr bm
+
+		mov eax, rect.right
+		sub eax, rect.left
+
+		mov ecx, rect.bottom
+		sub ecx, rect.top
+
+		invoke StretchBlt, hdc, 0, 0, eax, ecx, memHdc, 0, 0, bm.bmWidth, bm.bmHeight, MERGECOPY
+
+		mov eax, rect.right
+		sub eax, rect.left
+
+		mov ecx, rect.bottom
+		sub ecx, rect.top
+
+		invoke StretchBlt, memHdc, 0, 0, bm.bmWidth, bm.bmHeight, hdc, 0, 0, eax, ecx, SRCCOPY
+
+		invoke DeleteDC, memHdc
+		invoke ReleaseDC, NULL, hdc
+
+		invoke RedrawWindow, hWin, NULL, NULL, RDW_INVALIDATE or RDW_INTERNALPAINT
+
+		ret
+TransformImage endp
 ; ------------------------------------------------------------------------
 ;  OpenFileDialogue
 ; ------------------------------------------------------------------------
@@ -253,6 +310,10 @@ WndProc proc 	hWin 	:HWND,
     mov eax, wParam
     .if eax == IDM_FILE_OPEN
         invoke OpenFileDialogue, hWin
+		.elseif eax == IDM_IMAGE_TRANSFORM
+				invoke TransformImage, hWin
+		.elseif eax == IDM_FILE_SAVE
+				invoke SaveImageFile, hWin
     .endif
 	.endif
 
