@@ -40,6 +40,7 @@
 		              db	"BMP Files",0,"*.bmp", 0,0 ;набор фильтров
 
 
+
 ; #########################################################################
 
 .data
@@ -49,6 +50,7 @@
     menuFile      db "&File", 0
 		hInstance 		dd ?
 		lpszCmdLine		dd ?
+		blueColor			dd 00ff0000h
     hWnd          HWND ?
     hFileImage    HBITMAP 0
     ofn		        OPENFILENAME <>	; структура для открытия файла
@@ -151,8 +153,10 @@ AddMenus proc hWin :HWND
     ret
 AddMenus endp
 
-;can use: ecx, r8d, r9d
-;must save r12d - r15d
+; ------------------------------------------------------------------------
+;  PaintImage
+; ------------------------------------------------------------------------
+
 PaintImage proc hWin :HWND
 
 		local ps			:PAINTSTRUCT
@@ -169,10 +173,15 @@ PaintImage proc hWin :HWND
 
 		invoke GetClientRect, hWin, addr rect
 
+		invoke CreateSolidBrush, blueColor
+		invoke SelectObject, hdc, eax
+
 		mov image, rv(SelectObject, memHdc, hFileImage)
 		invoke GetObject, hFileImage, sizeof bm, addr bm
 
 		invoke SetStretchBltMode, hdc, HALFTONE
+
+		invoke GetDCBrushColor, hdc
 
 		mov eax, rect.right
 		sub eax, rect.left
@@ -180,7 +189,7 @@ PaintImage proc hWin :HWND
 		mov ecx, rect.bottom
 		sub ecx, rect.top
 
-		invoke StretchBlt, hdc, 0, 0,	eax, ecx, memHdc, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY
+		invoke StretchBlt, hdc, 0, 0,	eax, ecx, memHdc, 0, 0, bm.bmWidth, bm.bmHeight, MERGECOPY
 
 		invoke SelectObject, memHdc, image
 		invoke DeleteDC, memHdc
@@ -190,6 +199,9 @@ PaintImage proc hWin :HWND
 		ret
 PaintImage endp
 
+; ------------------------------------------------------------------------
+;  OpenFileDialogue
+; ------------------------------------------------------------------------
 
 OpenFileDialogue proc hWin :HWND
 
