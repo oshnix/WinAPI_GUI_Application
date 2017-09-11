@@ -151,20 +151,36 @@ AddMenus proc hWin :HWND
     ret
 AddMenus endp
 
+;can use: ecx, r8d, r9d
+;must save r12d - r15d
 PaintImage proc hWin :HWND
 
 		local ps			:PAINTSTRUCT
 		local bm			:BITMAP
-		local hdc			:HDC
-		local memHdc	:HDC
-		local	image		:HBITMAP
+
+		local hdc					:HDC
+		local memHdc			:HDC
+
+		local rect				:RECT
+		local	image				:HBITMAP
 
 		mov hdc, rv(BeginPaint, hWin, addr ps)
 		mov memHdc, rv(CreateCompatibleDC, hdc)
 
+		invoke GetClientRect, hWin, addr rect
+
 		mov image, rv(SelectObject, memHdc, hFileImage)
 		invoke GetObject, hFileImage, sizeof bm, addr bm
-		invoke BitBlt,hdc, 0, 0, bm.bmWidth, bm.bmHeight, memHdc, 0, 0, SRCCOPY
+
+		invoke SetStretchBltMode, hdc, HALFTONE
+
+		mov eax, rect.right
+		sub eax, rect.left
+
+		mov ecx, rect.bottom
+		sub ecx, rect.top
+
+		invoke StretchBlt, hdc, 0, 0,	eax, ecx, memHdc, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY
 
 		invoke SelectObject, memHdc, image
 		invoke DeleteDC, memHdc
