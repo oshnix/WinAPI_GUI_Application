@@ -316,6 +316,7 @@ CreateBitmapInfoStruct proc	hWin	:HWND,
 		div ecx
 		mov ecx, pbmi.bmiHeader.biHeight
 		mul ecx
+		mov pbmi.bmiHeader.biSizeImage, eax
 
 		mov pbmi.bmiHeader.biClrImportant, 0
 
