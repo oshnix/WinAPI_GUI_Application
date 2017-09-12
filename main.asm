@@ -1,6 +1,6 @@
 ; #########################################################################
 
-	.386
+	.686
 	.model flat, stdcall
 	option casemap :none
 
@@ -37,6 +37,7 @@
 	IDM_FILE_OPEN			equ 1
 	IDM_FILE_SAVE			equ 2
 	IDM_IMAGE_TRANSFORM		equ 3
+	IDM_CHANGE_TIMER		equ 4
 	;макс длина имени файла
 	maxsize       			equ 256
 	;Фильтры для файлов
@@ -55,6 +56,8 @@
 	hInstance		dd ?
 	lpszCmdLine		dd ?
 	pbmi			BITMAPINFO <>
+	hMenuEdit		HMENU ?
+	checkedTimer	db	0
 	hWnd			HWND ?
 	hFileImage		HBITMAP 0
 	ofn				OPENFILENAME <>	; структура для открытия файла
@@ -138,21 +141,26 @@ MessagePumpEnd:
 WinMain endp
 
 ; ------------------------------------------------------------------------
-;  AddMenus
+;	AddMenus
+;		Uses Global hMenuEdit
 ; ------------------------------------------------------------------------
 
 AddMenus proc hWin :HWND
-	local hMenubar  :HMENU
-	local hMenu     :HMENU
+	local hMenubar	:HMENU
+	local hMenuFile	:HMENU
 
 	mov hMenubar, rv(CreateMenu)
-	mov hMenu, rv(CreateMenu)
+	mov hMenuFile, rv(CreateMenu)
+	mov hMenuEdit, rv(CreateMenu)
 
-	invoke AppendMenuA, hMenu, MF_STRING, IDM_FILE_OPEN, chr$("&Open")
-	invoke AppendMenuA, hMenu, MF_STRING, IDM_FILE_SAVE, chr$("&Save")
-	invoke AppendMenuA, hMenu, MF_SEPARATOR, 0, NULL
-	invoke AppendMenuA, hMenu, MF_STRING, IDM_IMAGE_TRANSFORM, chr$("&Transform")
-	invoke AppendMenuA, hMenubar, MF_POPUP, hMenu, chr$("&File")
+	invoke AppendMenuA, hMenuFile, MF_STRING, IDM_FILE_OPEN, chr$("&Open")
+	invoke AppendMenuA, hMenuFile, MF_STRING, IDM_FILE_SAVE, chr$("&Save")
+
+	invoke AppendMenuA, hMenuEdit, MF_STRING, IDM_IMAGE_TRANSFORM, chr$("&Transform")
+	invoke AppendMenuA, hMenuEdit, MF_STRING, IDM_CHANGE_TIMER, chr$("&Timer")
+
+	invoke AppendMenuA, hMenubar, MF_POPUP, hMenuFile, chr$("&File")
+	invoke AppendMenuA, hMenubar, MF_POPUP, hMenuEdit, chr$("&Edit")
 	invoke SetMenu, hWin, hMenubar
 
 	ret
@@ -263,6 +271,8 @@ TransformImage proc hWin :HWND
 	local memHdc1	:HDC
 	local memHdc2	:HDC
 	local image		:HBITMAP
+	local fPart		:dword
+	local sPart		:dword
 
 	mov memHdc1, rv(CreateCompatibleDC, NULL)
 
@@ -272,8 +282,27 @@ TransformImage proc hWin :HWND
 	invoke SelectObject, memHdc1, hFileImage
 	invoke GetObject, hFileImage, sizeof bm, addr bm
 
-	;invoke BitBlt, memHdc1, 0, 0,  bm.bmWidth, bm.bmHeight, memHdc1, 0, 0, MERGECOPY
-	invoke TransformImageByPixel, bm, memHdc1
+	mov ah, checkedTimer
+	.if ah == 0
+		invoke BitBlt, memHdc1, 0, 0,  bm.bmWidth, bm.bmHeight, memHdc1, 0, 0, MERGECOPY
+	.else
+		rdtsc
+		mov fPart, edx
+		mov sPart, eax
+		invoke BitBlt, memHdc1, 0, 0,  bm.bmWidth, bm.bmHeight, memHdc1, 0, 0, MERGECOPY
+		rdtsc
+		sub edx, fPart
+		sub eax, sPart
+		nop
+		rdtsc
+		mov fPart, edx
+		mov sPart, eax
+		invoke TransformImageByPixel, bm, memHdc1
+		rdtsc
+		sub edx, fPart
+		sub eax, sPart
+		nop
+	.endif
 
 	invoke DeleteDC, memHdc1
 
@@ -455,6 +484,15 @@ WndProc proc hWin 	:HWND,
 			invoke OpenFileDialogue, hWin
 		.elseif eax == IDM_IMAGE_TRANSFORM
 			invoke TransformImage, hWin
+		.elseif eax == IDM_CHANGE_TIMER
+			invoke GetMenuState, hMenuEdit, IDM_CHANGE_TIMER, MF_BYCOMMAND
+			.if eax == MF_CHECKED
+				invoke CheckMenuItem, hMenuEdit, IDM_CHANGE_TIMER, MF_UNCHECKED
+				mov checkedTimer, 0
+			.else
+				invoke CheckMenuItem, hMenuEdit, IDM_CHANGE_TIMER, MF_CHECKED
+				mov checkedTimer, 1
+			.endif
 		.elseif eax == IDM_FILE_SAVE
 			mov eax, hFileImage
 			.if eax != 0
