@@ -37,7 +37,7 @@
 	IDM_FILE_OPEN			equ 1
 	IDM_FILE_SAVE			equ 2
 	IDM_IMAGE_TRANSFORM		equ 3
-	IDM_CHANGE_TIMER		equ 4
+	IDM_TRANSORM_MEASURE	equ 4
 	;макс длина имени файла
 	maxsize       			equ 256
 	;Фильтры для файлов
@@ -56,8 +56,6 @@
 	hInstance		dd ?
 	lpszCmdLine		dd ?
 	pbmi			BITMAPINFO <>
-	hMenuEdit		HMENU ?
-	checkedTimer	db	0
 	hWnd			HWND ?
 	hFileImage		HBITMAP 0
 	ofn				OPENFILENAME <>	; структура для открытия файла
@@ -148,6 +146,7 @@ WinMain endp
 AddMenus proc hWin :HWND
 	local hMenubar	:HMENU
 	local hMenuFile	:HMENU
+	local hMenuEdit	:HMENU
 
 	mov hMenubar, rv(CreateMenu)
 	mov hMenuFile, rv(CreateMenu)
@@ -157,7 +156,7 @@ AddMenus proc hWin :HWND
 	invoke AppendMenuA, hMenuFile, MF_STRING, IDM_FILE_SAVE, chr$("&Save")
 
 	invoke AppendMenuA, hMenuEdit, MF_STRING, IDM_IMAGE_TRANSFORM, chr$("&Transform")
-	invoke AppendMenuA, hMenuEdit, MF_STRING, IDM_CHANGE_TIMER, chr$("&Timer")
+	invoke AppendMenuA, hMenuEdit, MF_STRING, IDM_TRANSORM_MEASURE, chr$("&Debug and measure")
 
 	invoke AppendMenuA, hMenubar, MF_POPUP, hMenuFile, chr$("&File")
 	invoke AppendMenuA, hMenubar, MF_POPUP, hMenuEdit, chr$("&Edit")
@@ -228,25 +227,26 @@ OpenFileStructCreate endp
 ;	TransformImageByPixel
 ;		change hFileImage and delete green and red chanels
 ; ------------------------------------------------------------------------
-TransformImageByPixel proc bm :BITMAP, hdc :HDC
+TransformImageByPixel proc hdc	:HDC,
+			xSize				:LONG,
+			ySize				:LONG
 
 	local xcounter	:DWORD
 	local ycounter	:DWORD
 
 	mov ycounter, 0
-
 	externalForBegin:
 		mov eax, ycounter
 		inc eax
 		mov ycounter, eax
-		cmp eax, bm.bmHeight
+		cmp eax, ySize
 		ja externalForEnd
 		mov xcounter, 0
 		innerForBegin:
 			mov eax, xcounter
 			inc eax
 			mov xcounter, eax
-			cmp eax, bm.bmWidth
+			cmp eax, xSize
 			ja innerForEnd
 			invoke GetPixel, hdc, xcounter, ycounter
 			and eax, 00ff0000h
@@ -260,6 +260,71 @@ TransformImageByPixel proc bm :BITMAP, hdc :HDC
 TransformImageByPixel endp
 
 ; ------------------------------------------------------------------------
+;	DebugAndMeasureTransform
+; ------------------------------------------------------------------------
+DebugAndMeasureTransform proc hWin	:HWND
+
+	local memHdc1	:HDC
+	local memHdc2	:HDC
+	local fPart		:dword
+	local sPart		:dword
+	local xPix		:dword
+	local yPix		:dword
+
+	mov memHdc1, rv(CreateCompatibleDC, NULL)
+	invoke SelectObject, memHdc1, hFileImage
+
+	mov xPix, 2200
+	mov yPix, 2200
+
+	loopBegin:
+		mov eax, xPix
+		sub eax, 200
+		mov xPix, eax
+
+		mov ecx, yPix
+		sub ecx, 200
+		mov yPix, 200
+
+		cmp eax, 0
+		jbe loopEnd
+
+			mov memHdc2, rv(CreateCompatibleDC, NULL)
+
+			invoke CreateSolidBrush, 00ff0000h
+			invoke SelectObject, memHdc2, eax
+
+			invoke BitBlt, memHdc2, 0, 0, eax, ecx, memHdc1, 0, 0, SRCCOPY
+
+			rdtsc
+			mov fPart, edx
+			mov sPart, eax
+			invoke BitBlt, memHdc2, 0, 0,  xPix, yPix, memHdc2, 0, 0, MERGECOPY
+			rdtsc
+			sub edx, fPart
+			sub eax, sPart
+			nop	;First debug point
+
+			rdtsc
+			mov fPart, edx
+			mov sPart, eax
+			invoke TransformImageByPixel, memHdc2, xPix, yPix
+			rdtsc
+			sub edx, fPart
+			sub eax, sPart
+			nop	;Second debug point
+
+			invoke DeleteDC, memHdc2
+
+		jmp loopBegin
+	loopEnd:
+
+	invoke DeleteDC, memHdc1
+
+	ret
+DebugAndMeasureTransform endp
+
+; ------------------------------------------------------------------------
 ;	TransformImage
 ;		change hFileImage and delete green and red chanels
 ; ------------------------------------------------------------------------
@@ -269,10 +334,6 @@ TransformImage proc hWin :HWND
 	local bm		:BITMAP
 	local rect		:RECT
 	local memHdc1	:HDC
-	local memHdc2	:HDC
-	local image		:HBITMAP
-	local fPart		:dword
-	local sPart		:dword
 
 	mov memHdc1, rv(CreateCompatibleDC, NULL)
 
@@ -282,27 +343,7 @@ TransformImage proc hWin :HWND
 	invoke SelectObject, memHdc1, hFileImage
 	invoke GetObject, hFileImage, sizeof bm, addr bm
 
-	mov ah, checkedTimer
-	.if ah == 0
-		invoke BitBlt, memHdc1, 0, 0,  bm.bmWidth, bm.bmHeight, memHdc1, 0, 0, MERGECOPY
-	.else
-		rdtsc
-		mov fPart, edx
-		mov sPart, eax
-		invoke BitBlt, memHdc1, 0, 0,  bm.bmWidth, bm.bmHeight, memHdc1, 0, 0, MERGECOPY
-		rdtsc
-		sub edx, fPart
-		sub eax, sPart
-		nop
-		rdtsc
-		mov fPart, edx
-		mov sPart, eax
-		invoke TransformImageByPixel, bm, memHdc1
-		rdtsc
-		sub edx, fPart
-		sub eax, sPart
-		nop
-	.endif
+	invoke BitBlt, memHdc1, 0, 0,  bm.bmWidth, bm.bmHeight, memHdc1, 0, 0, MERGECOPY
 
 	invoke DeleteDC, memHdc1
 
@@ -484,15 +525,12 @@ WndProc proc hWin 	:HWND,
 			invoke OpenFileDialogue, hWin
 		.elseif eax == IDM_IMAGE_TRANSFORM
 			invoke TransformImage, hWin
-		.elseif eax == IDM_CHANGE_TIMER
-			invoke GetMenuState, hMenuEdit, IDM_CHANGE_TIMER, MF_BYCOMMAND
-			.if eax == MF_CHECKED
-				invoke CheckMenuItem, hMenuEdit, IDM_CHANGE_TIMER, MF_UNCHECKED
-				mov checkedTimer, 0
-			.else
-				invoke CheckMenuItem, hMenuEdit, IDM_CHANGE_TIMER, MF_CHECKED
-				mov checkedTimer, 1
+		.elseif eax == IDM_TRANSORM_MEASURE
+			mov eax, hFileImage
+			.if eax != 0
+				invoke DebugAndMeasureTransform, hWin
 			.endif
+
 		.elseif eax == IDM_FILE_SAVE
 			mov eax, hFileImage
 			.if eax != 0
