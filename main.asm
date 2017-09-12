@@ -217,36 +217,72 @@ OpenFileStructCreate proc hWin	:HWND
 OpenFileStructCreate endp
 
 ; ------------------------------------------------------------------------
+;	TransformImageByPixel
+;		change hFileImage and delete green and red chanels
+; ------------------------------------------------------------------------
+TransformImageByPixel proc bm :BITMAP, hdc :HDC
+
+	local xcounter	:DWORD
+	local ycounter	:DWORD
+
+	mov ycounter, 0
+
+	externalForBegin:
+		mov eax, ycounter
+		inc eax
+		mov ycounter, eax
+		cmp eax, bm.bmHeight
+		ja externalForEnd
+		mov xcounter, 0
+		innerForBegin:
+			mov eax, xcounter
+			inc eax
+			mov xcounter, eax
+			cmp eax, bm.bmWidth
+			ja innerForEnd
+			invoke GetPixel, hdc, xcounter, ycounter
+			and eax, 00ff0000h
+			invoke SetPixel, hdc, xcounter, ycounter, eax
+			jmp innerForBegin
+		innerForEnd:
+		jmp externalForBegin
+	externalForEnd:
+
+	ret
+TransformImageByPixel endp
+
+; ------------------------------------------------------------------------
 ;	TransformImage
 ;		change hFileImage and delete green and red chanels
 ; ------------------------------------------------------------------------
 
 TransformImage proc hWin :HWND
-	local	bm			:BITMAP
+
+	local bm		:BITMAP
 	local rect		:RECT
 	local memHdc1	:HDC
 	local memHdc2	:HDC
 	local image		:HBITMAP
 
 	mov memHdc1, rv(CreateCompatibleDC, NULL)
-	mov memHdc2, rv(CreateCompatibleDC, NULL)
 
 	invoke CreateSolidBrush, 00ff0000h
 	invoke SelectObject, memHdc1, eax
 
 	invoke SelectObject, memHdc1, hFileImage
-	invoke SelectObject, memHdc2, hFileImage
 	invoke GetObject, hFileImage, sizeof bm, addr bm
 
-	invoke BitBlt, memHdc1, 0, 0,  bm.bmWidth, bm.bmHeight, memHdc1, 0, 0, MERGECOPY
+	;invoke BitBlt, memHdc1, 0, 0,  bm.bmWidth, bm.bmHeight, memHdc1, 0, 0, MERGECOPY
+	invoke TransformImageByPixel, bm, memHdc1
 
 	invoke DeleteDC, memHdc1
-	invoke DeleteDC, memHdc2
 
 	invoke RedrawWindow, hWin, NULL, NULL, RDW_INVALIDATE or RDW_INTERNALPAINT
 
 	ret
 TransformImage endp
+
+
 ; ------------------------------------------------------------------------
 ;  OpenFileDialogue
 ; ------------------------------------------------------------------------
