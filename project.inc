@@ -6,10 +6,8 @@
 	include	/masm32/include/comdlg32.inc
 	include	/masm32/macros/macros.asm
 	include	/masm32/include/gdi32.inc
-	include	/masm32/include/gdiplus.inc
 
 	includelib /masm32/lib/gdi32.lib
-	includelib /masm32/lib/gdiplus.lib
 	includelib /masm32/lib/user32.lib
 	includelib /masm32/lib/kernel32.lib
 	includelib /masm32/lib/comdlg32.lib
@@ -41,6 +39,9 @@
 		szWindowTitle	db "ImageTransformer", 0
 		menuOpen		db "&Open", 0
 		menuFile		db "&File", 0
+		firstMask		db	0ffh, 0, 0, 0ffh, 0, 0, 0ffh, 0
+		secondMask		db	0, 0, 0ffh, 0, 0, 0ffh, 0, 0
+		thirdMask		db	0, 0ffh, 0, 0, 0ffh, 0, 0, 0ffh
 		hInstance		dd ?
 		lpszCmdLine		dd ?
 		cm				dd	25 dup(0.0)

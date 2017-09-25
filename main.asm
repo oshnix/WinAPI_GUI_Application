@@ -3,6 +3,7 @@
 	.686
 	.model flat, stdcall
 	option casemap :none
+	.mmx ;For MMX
 
 ; #########################################################################
 	include project.inc
@@ -44,7 +45,7 @@ WinMain proc hInst	:dword,
 	pop wc.hInstance
 
 	mov	wc.hbrBackground, COLOR_WINDOW + 1
-	mov 	wc.lpszClassName, offset szClassName
+	mov wc.lpszClassName, offset szClassName
 
 	invoke	LoadIcon, hInst, IDI_APPLICATION
 	mov	wc.hIcon, eax

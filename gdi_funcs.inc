@@ -174,23 +174,81 @@ TransformImage endp
 ;		change hFileImage and multiple green channel
 ; -----------------------------------------------------------------------
 
-TransformImageGreen proc hWin :HWND
+TransformImageGreen proc hWin 	:HWND
+	local hdc		:HDC
+	local lpBits		:LPBYTE
 
-	local hdc					:HDC
-	local sourceImageGraphic	:dword
-	local imageAttributes		:dword
-	local graphics				:dword
+	push esi
+	push edi
 
 	mov hdc, rv(CreateCompatibleDC, NULL)
-	invoke SelectObject, hdc, hFileImage
-	invoke GdipCreateFromHDC, hdc, addr graphics
 
-	invoke GdipCreateBitmapFromHBITMAP, hFileImage, NULL, addr sourceImageGraphic
-	invoke GdipCreateImageAttributes, addr imageAttributes
+	mov lpBits, rv(GlobalAlloc, GMEM_FIXED, bmiInfoHeader.biSizeImage)
 
-	invoke GdipSetImageAttributesColorMatrix, imageAttributes, ColorAdjustTypeDefault, TRUE, addr cm, NULL, ColorMatrixFlagsDefault
-	invoke GdipDrawImage, graphics, sourceImageGraphic, 0, 0
+	invoke GetDIBits, hdc, hFileImage, 0, bmiInfoHeader.biHeight, lpBits, addr bmiInfoHeader, DIB_RGB_COLORS
 
-	invoke GdipCreateHBITMAPFromBitmap, sourceImageGraphic, addr hFileImage, NULL
+	mov ecx, -24
+	mov edx, bmiInfoHeader.biSizeImage
+	mov esi, [lpBits]
+	loopBegin:
+		add ecx, 48
+		cmp ecx, edx
+		ja	loopEnd
+
+		sub ecx, 8
+		movq mm0, [esi + ecx]
+		movq mm1, QWORD PTR [firstMask]
+		pand mm1, mm0
+		paddusb mm0, mm1
+		movq [esi + ecx], mm0
+
+		sub ecx, 8
+		movq mm0, [esi + ecx]
+		movq mm1, QWORD PTR [secondMask]
+		pand mm1, mm0
+		paddusb mm0, mm1
+		movq [esi + ecx], mm0
+
+		sub ecx, 8
+		movq mm0, [esi + ecx]
+		movq mm1, QWORD PTR [thirdMask]
+		pand mm1, mm0
+		paddusb mm0, mm1
+		movq [esi + ecx], mm0
+
+		jmp loopBegin
+	loopEnd:
+
+	sub ecx, 24
+	inc esi
+	mov di, 2
+	xor eax, eax
+
+	finalLoopBegin:
+		add ecx, 3
+		cmp ecx, edx
+		ja finalLoopEnd
+
+		mov al, BYTE PTR[esi + ecx]
+		mul di
+		jb finalLoopWriteMem	;If result is bigger than 0xFF
+		xor eax, eax
+		mov al, 0ffh
+
+	finalLoopWriteMem:
+		mov BYTE PTR[esi + ecx], al
+
+		jmp finalLoopBegin
+	finalLoopEnd:
+
+	invoke SetDIBits, hdc, hFileImage, 0, bmiInfoHeader.biHeight, lpBits, addr bmiInfoHeader, DIB_RGB_COLORS
+
+	invoke GlobalFree, lpBits
+
+	invoke RedrawWindow, hWin, NULL, NULL, RDW_INVALIDATE or RDW_INTERNALPAINT
+
+	pop edi
+	pop esi
+
 	ret
 TransformImageGreen endp
